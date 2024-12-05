@@ -1,0 +1,78 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv/
+env.bak/
+venv.bak/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+*.sublime-workspace
+*.sublime-project
+
+# Flask
+instance/
+.webassets-cache
+flask_session/
+
+# Testing
+.coverage
+htmlcov/
+.tox/
+.nox/
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Logs
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Misc
+*.bak
+*.tmp
+*.temp
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
