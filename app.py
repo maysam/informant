@@ -6,11 +6,21 @@ import json
 import requests
 from dotenv import load_dotenv
 from datetime import datetime
+from models import db, UserLog
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
+
+# Database configuration
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///user_logs.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db.init_app(app)
+
+# Create tables
+with app.app_context():
+    db.create_all()
 
 # Get environment variables with defaults for testing
 BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME')
@@ -125,10 +135,12 @@ def index():
     if not bot_token or bot_token.strip() == '':
         return render_template('index.html', 
                              error="Telegram bot not properly configured. Please set up your environment variables.",
-                             bot_username=None)
+                             bot_username=None,
+                             admin_username=ADMIN_USERNAME)
     return render_template('index.html', 
                          user=session.get('user'), 
                          bot_username=BOT_USERNAME,
+                         admin_username=ADMIN_USERNAME,
                          error=None)
 
 @app.route('/login/telegram', methods=['POST'])
@@ -137,12 +149,10 @@ def telegram_login():
     if not bot_token or bot_token.strip() == '':
         return 'Telegram bot token not configured', 500
         
-    # Get form data
     data = request.form.to_dict()
     if not data:
         return 'No data received', 500
         
-    # Verify the data
     verification_result = verify_telegram_data(data)
     if verification_result is None:
         return 'Telegram bot token not configured', 500
@@ -150,7 +160,6 @@ def telegram_login():
     if not verification_result:
         return 'Authentication failed', 401
         
-    # Create user data
     user_data = {
         'id': data.get('id'),
         'first_name': data.get('first_name'),
@@ -159,8 +168,17 @@ def telegram_login():
         'auth_date': data.get('auth_date')
     }
     
-    # Store in session
     session['user'] = user_data
+    
+    # Log the login
+    log_entry = UserLog(
+        telegram_id=user_data['id'],
+        first_name=user_data['first_name'],
+        username=user_data.get('username'),
+        action='login'
+    )
+    db.session.add(log_entry)
+    db.session.commit()
     
     # Send notifications
     send_login_notifications(user_data)
@@ -170,11 +188,59 @@ def telegram_login():
 @app.route('/logout')
 def logout():
     user_data = session.get('user')
-    if user_data:
-        # Send notifications before clearing the session
+    if user_data and 'id' in user_data and 'first_name' in user_data:
+        # Log the logout
+        log_entry = UserLog(
+            telegram_id=user_data['id'],
+            first_name=user_data['first_name'],
+            username=user_data.get('username'),
+            action='logout'
+        )
+        db.session.add(log_entry)
+        db.session.commit()
+        
+        # Send notifications
         send_logout_notifications(user_data)
+
+    # Clear the session
     session.pop('user', None)
     return redirect(url_for('index'))
+
+def is_admin():
+    """Check if the current user is an admin"""
+    user = session.get('user')
+    return user and user.get('username') == ADMIN_USERNAME
+
+@app.route('/admin')
+def admin_panel():
+    if not is_admin():
+        return redirect(url_for('index'))
+    
+    # Get all logs, ordered by timestamp (newest first)
+    logs = UserLog.query.order_by(UserLog.timestamp.desc()).all()
+    return render_template('admin.html', logs=logs)
+
+@app.route('/api/logs')
+def get_logs():
+    if not is_admin():
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    # Get all logs, ordered by timestamp (newest first)
+    logs = UserLog.query.order_by(UserLog.timestamp.desc()).all()
+    return jsonify([log.to_dict() for log in logs])
+
+@app.route('/api/clean-logs', methods=['POST'])
+def clean_logs():
+    if not is_admin():
+        abort(403)
+    
+    try:
+        UserLog.query.delete()
+        db.session.commit()
+        return jsonify({'status': 'success', 'message': 'All logs have been cleared'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 if __name__ == '__main__':
     bot_token = os.getenv('TELEGRAM_BOT_TOKEN')

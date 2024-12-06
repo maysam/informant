@@ -41,3 +41,18 @@
     border-radius: 4px;
     margin: 20px 0;
 }
+
+.admin-button {
+    display: inline-block;
+    padding: 8px 16px;
+    margin: 10px;
+    background-color: #4CAF50;
+    color: white;
+    text-decoration: none;
+    border-radius: 4px;
+    transition: background-color 0.3s;
+}
+
+.admin-button:hover {
+    background-color: #45a049;
+}

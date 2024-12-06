@@ -1,5 +1,7 @@
 Flask==2.3.3
 python-dotenv==1.0.0
 requests==2.31.0
+SQLAlchemy==1.4.41
+Flask-SQLAlchemy==2.5.1
 pytest==7.4.2
 pytest-flask==1.2.0

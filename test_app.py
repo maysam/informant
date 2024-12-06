@@ -1,6 +1,8 @@
 import os
 import pytest
 from app import app
+from app import UserLog, db
+import json
 
 @pytest.fixture
 def client():
@@ -25,6 +27,16 @@ def clear_env_vars(monkeypatch):
     monkeypatch.delenv('TELEGRAM_BOT_USERNAME', raising=False)
     yield
 
+@pytest.fixture
+def clean_db(client):
+    """Clean the database before each test that uses this fixture"""
+    with client.application.app_context():
+        db.drop_all()
+        db.create_all()
+    yield
+    with client.application.app_context():
+        db.drop_all()
+
 def test_index_page(client, mock_env_vars):
     """Test that the index page loads correctly"""
     response = client.get('/')
@@ -44,7 +56,11 @@ def test_index_with_user(client, mock_env_vars):
 def test_logout(client, mock_env_vars):
     """Test logout functionality"""
     with client.session_transaction() as session:
-        session['user'] = {'first_name': 'Test'}
+        session['user'] = {
+            'id': 12345,
+            'first_name': 'Test',
+            'username': 'testuser'
+        }
     response = client.get('/logout')
     assert response.status_code == 302
     with client.session_transaction() as session:
@@ -111,3 +127,36 @@ def test_successful_login(client, mock_env_vars, monkeypatch):
     }
     response = client.post('/login/telegram', data=data)
     assert response.status_code == 302
+
+def test_clean_logs(client, mock_env_vars, clean_db):
+    """Test cleaning logs functionality"""
+    # Create a test log entry
+    with client.application.app_context():
+        with client.session_transaction() as session:
+            session['user'] = {
+                'id': 12345,
+                'first_name': 'Test',
+                'username': os.getenv('ADMIN_USERNAME')  # Make the user an admin
+            }
+        
+        # Add a test log
+        log = UserLog(
+            telegram_id='12345',
+            first_name='Test',
+            username='testuser',
+            action='login'
+        )
+        db.session.add(log)
+        db.session.commit()
+        
+        # Verify log exists
+        assert UserLog.query.count() == 1
+        
+        # Try to clean logs
+        response = client.post('/api/clean-logs')
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['status'] == 'success'
+        
+        # Verify logs are cleaned
+        assert UserLog.query.count() == 0

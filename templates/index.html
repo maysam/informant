@@ -25,6 +25,9 @@
                     {% if user.photo_url %}
                         <img src="{{ user.photo_url }}" alt="Profile Photo">
                     {% endif %}
+                    {% if user.username == admin_username %}
+                        <a href="{{ url_for('admin_panel') }}" class="admin-button">Admin Panel</a>
+                    {% endif %}
                     <a href="{{ url_for('logout') }}" class="logout-button">Logout</a>
                 </div>
             {% else %}
