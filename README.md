@@ -1,100 +1,131 @@
 # Telegram Login Website
 
-A simple Flask web application that demonstrates Telegram Login Widget integration. This application allows users to log in using their Telegram account and displays their basic profile information.
+A Flask web application that implements Telegram Login Widget with user notifications.
+
+## Features
+
+- Telegram Login Widget integration
+- Admin notifications for user logins and logouts
+- Secure authentication verification
+- User session management
+- Beautiful and responsive UI
 
 ## Prerequisites
 
-- Python 3.8 or higher
-- A Telegram Bot (you'll need the bot token and username)
-- pip (Python package installer)
+- Python 3.7+
+- A Telegram Bot (for login widget and notifications)
+- ngrok or telebit (for local development)
 
 ## Setup
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd telegram-login-website
-   ```
+1. **Create a Telegram Bot**:
+   - Talk to [@BotFather](https://t.me/botfather) on Telegram
+   - Use the `/newbot` command to create a new bot
+   - Save the bot token and username
+   - Enable the bot's domain using `/setdomain` command with your website URL
 
-2. **Install dependencies**
+2. **Install Dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
 
-3. **Create a Telegram Bot**
-   1. Open Telegram and search for [@BotFather](https://t.me/botfather)
-   2. Send the command `/newbot` and follow the instructions
-   3. Once created, BotFather will give you a bot token
-   4. Note down both the bot token and the bot username
+3. **Environment Variables**:
+   Create a `.env` file in the project root with the following variables:
+   ```bash
+   TELEGRAM_BOT_TOKEN=your_bot_token_here
+   TELEGRAM_BOT_USERNAME=your_bot_username_without_@
+   WEBSITE_URL=your_public_url
+   ADMIN_USERNAME=your_telegram_username
+   ADMIN_CHAT_ID=your_telegram_chat_id
+   ```
 
-4. **Configure Environment Variables**
-   1. Copy the example environment file:
-      ```bash
-      cp .env.example .env
-      ```
-   2. Edit the `.env` file and fill in your bot details:
-      ```
-      TELEGRAM_BOT_TOKEN=your_bot_token_here
-      TELEGRAM_BOT_USERNAME=your_bot_username
-      WEBSITE_URL=http://localhost:5000
-      ```
+4. **Get Your Chat ID**:
+   - Send a message to your bot
+   - Access `https://api.telegram.org/bot<YourBOTToken>/getUpdates`
+   - Look for the `"id"` field in the response
+   - Add this ID to your `.env` file as `ADMIN_CHAT_ID`
 
-## Running the Application
+## Running Locally
 
-1. **Start the Flask server**
+1. **Set Up a Public URL**:
+   
+   Using telebit:
+   ```bash
+   # Install telebit
+   curl https://get.telebit.io/ | bash
+
+   # Start telebit
+   export XDG_RUNTIME_DIR=/run/user/$UID
+   systemctl --user restart telebit
+
+   # Forward port 5000
+   telebit http 5000
+   ```
+
+   OR using ngrok:
+   ```bash
+   # Install ngrok
+   # Start ngrok
+   ngrok http 5000
+   ```
+
+2. **Update Bot Domain**:
+   - Copy your public URL (from telebit or ngrok)
+   - Update the `WEBSITE_URL` in your `.env` file
+   - Tell @BotFather to set this domain for your bot using `/setdomain`
+
+3. **Start the Application**:
    ```bash
    python app.py
    ```
 
-2. **Access the website**
-   - Open your web browser and navigate to `http://localhost:5000`
-   - You should see the login page with a Telegram Login Widget
+## Testing
 
-## Running Tests
-
-The application includes a comprehensive test suite. To run the tests:
-
+Run the test suite:
 ```bash
 python -m pytest
 ```
 
-This will run all tests and show the results. You can also run tests with more detailed output:
-
-```bash
-python -m pytest -v
-```
-
-## Features
-
-- Secure Telegram authentication
-- Display of user profile information
-- Session management
+The tests cover:
+- Basic page loading
+- Login functionality
 - Logout functionality
+- Telegram data verification
+- Error handling
+- Environment variable configuration
 
-## Security Notes
+## Security
 
-- The application verifies the authentication data from Telegram using cryptographic hash verification
-- User sessions are managed securely using Flask sessions
-- Environment variables are used to keep sensitive data out of the codebase
-- NEVER commit your `.env` file to version control
+- All Telegram login data is verified using HMAC-SHA256
+- Environment variables are used for sensitive data
+- Session management is implemented securely
+- Bot token and admin chat ID are protected
 
 ## Troubleshooting
 
-1. **"Telegram bot token not configured" error**
-   - Make sure you've created the `.env` file
-   - Verify that your bot token is correctly copied from BotFather
-   - Check that the environment variables are being loaded
+1. **Login Widget Not Showing**:
+   - Ensure `TELEGRAM_BOT_USERNAME` is set correctly (without @)
+   - Verify the domain is set in BotFather
+   - Check browser console for errors
 
-2. **Tests failing**
-   - Ensure all dependencies are installed
-   - Verify that pytest is installed
-   - Check that the test environment variables are set correctly
+2. **Notifications Not Working**:
+   - Verify `ADMIN_CHAT_ID` is set correctly
+   - Ensure the bot token is valid
+   - Check if you've sent at least one message to the bot
 
-3. **Login widget not appearing**
-   - Verify that your bot username is correct in the `.env` file
-   - Check the browser console for any JavaScript errors
-   - Ensure you're using the correct protocol (http/https) in your WEBSITE_URL
+3. **Tests Failing**:
+   - Make sure all dependencies are installed
+   - Verify environment variables are set
+   - Check if pytest is installed
 
 ## Contributing
 
-Feel free to submit issues and enhancement requests!
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

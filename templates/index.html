@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Telegram Login Demo</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="/static/style.css">
     <script async src="https://telegram.org/js/telegram-widget.js?22"></script>
 </head>
 <body>
@@ -12,41 +12,41 @@
         <h1>Welcome to Telegram Login Demo</h1>
         
         {% if error %}
-            <div class="error-message">
-                {{ error }}
-            </div>
-        {% endif %}
-        
-        {% if user %}
-            <div class="profile">
-                <h2>Welcome, {{ user.first_name }}!</h2>
-                {% if user.photo_url %}
-                    <img src="{{ user.photo_url }}" alt="Profile photo" class="profile-photo">
-                {% endif %}
-                <p>Username: @{{ user.username }}</p>
-                <p>Telegram ID: {{ user.id }}</p>
-                <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
-            </div>
+        <div class="error-message" style="color: red; margin: 20px 0;">
+            {{ error }}
+        </div>
         {% else %}
-            <div class="login-container">
-                <p>Please login with your Telegram account:</p>
-                {% if not error %}
-                    <script async 
-                        src="https://telegram.org/js/telegram-widget.js?22"
-                        data-telegram-login="{{ bot_username }}"
-                        data-size="large"
-                        data-radius="8"
-                        data-onauth="onTelegramAuth(user)"
-                        data-request-access="write">
-                    </script>
-                {% endif %}
-            </div>
+            {% if user %}
+                <div class="user-info">
+                    <h2>Welcome, {{ user.first_name }}!</h2>
+                    {% if user.username %}
+                        <p>Username: @{{ user.username }}</p>
+                    {% endif %}
+                    {% if user.photo_url %}
+                        <img src="{{ user.photo_url }}" alt="Profile Photo">
+                    {% endif %}
+                    <a href="{{ url_for('logout') }}" class="logout-button">Logout</a>
+                </div>
+            {% else %}
+                <div class="login-container">
+                    <p>Please login with your Telegram account:</p>
+                    {% if bot_username %}
+                        <script async 
+                            src="https://telegram.org/js/telegram-widget.js?22"
+                            data-telegram-login="{{ bot_username }}"
+                            data-size="large"
+                            data-radius="8"
+                            data-onauth="onTelegramAuth(user)"
+                            data-request-access="write">
+                        </script>
+                    {% endif %}
+                </div>
+            {% endif %}
         {% endif %}
     </div>
 
     <script>
         function onTelegramAuth(user) {
-            // Create a form and submit the data
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = '/login/telegram';
