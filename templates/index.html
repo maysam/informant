@@ -1,52 +1,65 @@
 {% extends "base.html" %}
 
-{% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-6 text-center">
-        {% if error %}
-            <div class="alert alert-danger">{{ error }}</div>
-        {% endif %}
+{% block title %}Telegram Login{% endblock %}
 
-        {% if user %}
-            <div class="welcome-container">
-                <img src="{{ user.photo_url }}" alt="Profile Photo" class="profile-photo" onerror="this.src='{{ url_for('static', filename='default-avatar.png') }}'">
-                <h2>Welcome, {{ user.first_name }}!</h2>
-                {% if user.username %}
-                    <p class="username">@{{ user.username }}</p>
-                {% endif %}
-                <a href="{{ url_for('logout') }}" class="btn btn-danger mt-3">
-                    <i class="fas fa-sign-out-alt"></i> Logout
-                </a>
+{% block content %}
+<div class="flex min-h-[calc(100vh-4rem)] bg-gray-100">
+    <div class="m-auto">
+        <div class="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
+            <div class="text-center mb-8">
+                <i class="fab fa-telegram text-6xl text-blue-500 mb-4"></i>
+                <h1 class="text-2xl font-bold text-gray-900">Welcome to Telegram Login</h1>
+                <p class="text-gray-600 mt-2">Please log in using your Telegram account</p>
             </div>
-        {% else %}
-            <h2>Welcome to Telegram Login</h2>
-            <p>Please log in using your Telegram account:</p>
-            
-            <form action="{{ url_for('telegram_login') }}" method="post" id="login-form">
-                <script 
-                    async 
-                    src="https://telegram.org/js/telegram-widget.js?22" 
-                    data-telegram-login="{{ bot_username }}" 
-                    data-size="large" 
-                    data-radius="8"
-                    data-onauth="onTelegramAuth(user)"
-                    data-request-access="write">
-                </script>
-                
-                <input type="hidden" name="id" id="id">
-                <input type="hidden" name="first_name" id="first_name">
-                <input type="hidden" name="last_name" id="last_name">
-                <input type="hidden" name="username" id="username">
-                <input type="hidden" name="photo_url" id="photo_url">
-                <input type="hidden" name="auth_date" id="auth_date">
-                <input type="hidden" name="hash" id="hash">
-                
-                <div class="form-check mt-3">
-                    <input type="checkbox" class="form-check-input" id="remember_me" name="remember_me">
-                    <label class="form-check-label" for="remember_me">Remember me for 24 hours</label>
+
+            {% if error %}
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
+                    {{ error }}
                 </div>
-            </form>
-        {% endif %}
+            {% endif %}
+
+            {% if user %}
+                <div class="text-center">
+                    <div class="mb-4">
+                        <img src="{{ user.photo_url }}" alt="Profile Photo" class="w-24 h-24 rounded-full mx-auto mb-4" 
+                             onerror="this.src='{{ url_for('static', filename='default-avatar.png') }}'">
+                        <h2 class="text-xl font-semibold text-gray-900">{{ user.first_name }}</h2>
+                        {% if user.username %}
+                            <p class="text-gray-600">@{{ user.username }}</p>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <a href="{{ url_for('manage_groups') }}" class="block w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700">
+                            <i class="fas fa-users mr-2"></i>Manage Groups
+                        </a>
+                        <a href="{{ url_for('logout') }}" class="block w-full px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700">
+                            <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                        </a>
+                    </div>
+                </div>
+            {% else %}
+                <div class="text-center">
+                    <form action="{{ url_for('telegram_login') }}" method="post" id="login-form">
+                        <script async src="https://telegram.org/js/telegram-widget.js?22" 
+                                data-telegram-login="{{ bot_username }}" 
+                                data-size="large" 
+                                data-radius="8"
+                                data-onauth="onTelegramAuth(user)"
+                                data-request-access="write">
+                        </script>
+                        
+                        <input type="hidden" name="id" id="id">
+                        <input type="hidden" name="first_name" id="first_name">
+                        <input type="hidden" name="last_name" id="last_name">
+                        <input type="hidden" name="username" id="username">
+                        <input type="hidden" name="photo_url" id="photo_url">
+                        <input type="hidden" name="auth_date" id="auth_date">
+                        <input type="hidden" name="hash" id="hash">
+                    </form>
+                </div>
+            {% endif %}
+        </div>
     </div>
 </div>
 {% endblock %}

@@ -1,14 +1,14 @@
-from flask import Flask, render_template, request, redirect, url_for, session, abort, jsonify
-import os
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash
 import hashlib
 import hmac
 import json
 import logging
 from logging.handlers import RotatingFileHandler
+import os
 import requests
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
-from models import db, UserLog
+from models import db, UserLog, TelegramUser, Group
 
 load_dotenv()
 
@@ -53,7 +53,6 @@ with app.app_context():
 BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME')
 WEBSITE_URL = os.getenv('WEBSITE_URL', 'http://localhost:5000')
 ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'maysam')
-ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
 
 def send_telegram_message(chat_id, message):
     """Send a message to a specific chat ID"""
@@ -132,48 +131,30 @@ def get_goodbye_message(count):
         return f"Visit #{count} complete! 🌟 Until we meet again!"
 
 def send_login_notifications(user_data):
-    """Send login notifications to both admin and user"""
-    # Get visit count
-    visit_count = get_visit_count(user_data['id'])
+    """Send login notification to the user"""
+    if not user_data:
+        return
 
-    # Admin notification
-    admin_chat_id = os.getenv('ADMIN_CHAT_ID')
-    if admin_chat_id:
-        admin_message = (
-            f"🔵 New login:\n"
-            f"User: {user_data['first_name']}"
-            f"{' (@' + user_data['username'] + ')' if user_data.get('username') else ''}\n"
-            f"ID: {user_data['id']}\n"
-            f"Visit count: #{visit_count}"
-        )
-        send_telegram_message(admin_chat_id, admin_message)
+    telegram_id = user_data.get('id')
+    if not telegram_id:
+        return
 
-    # User notification
-    user_message = get_visit_message(visit_count)
-    if user_data.get('id'):
-        send_telegram_message(user_data['id'], user_message)
+    visit_count = get_visit_count(telegram_id)
+    message = get_visit_message(visit_count)
+    send_telegram_message(telegram_id, message)
 
 def send_logout_notifications(user_data):
-    """Send logout notifications to both admin and user"""
-    # Get visit count
-    visit_count = get_visit_count(user_data['id'])
+    """Send logout notification to the user"""
+    if not user_data:
+        return
 
-    # Admin notification
-    admin_chat_id = os.getenv('ADMIN_CHAT_ID')
-    if admin_chat_id:
-        admin_message = (
-            f"🔴 User logged out:\n"
-            f"User: {user_data['first_name']}"
-            f"{' (@' + user_data['username'] + ')' if user_data.get('username') else ''}\n"
-            f"ID: {user_data['id']}\n"
-            f"Total visits: {visit_count}"
-        )
-        send_telegram_message(admin_chat_id, admin_message)
+    telegram_id = user_data.get('id')
+    if not telegram_id:
+        return
 
-    # User notification
-    user_message = get_goodbye_message(visit_count)
-    if user_data.get('id'):
-        send_telegram_message(user_data['id'], user_message)
+    visit_count = get_visit_count(telegram_id)
+    message = get_goodbye_message(visit_count)
+    send_telegram_message(telegram_id, message)
 
 def verify_telegram_data(data):
     """Verify that the data received from Telegram is authentic"""
@@ -227,18 +208,22 @@ def verify_telegram_data(data):
     app.logger.info("Verification result: %s", result)
     return result
 
+def is_admin():
+    """Check if the current user is an admin"""
+    if not session.get('user'):
+        return False
+    return session['user'].get('username') == ADMIN_USERNAME
+
 @app.route('/', methods=['GET', 'POST'])
 def index():
     bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
     if not bot_token or bot_token.strip() == '':
         return render_template('index.html',
                              error="Telegram bot not properly configured. Please set up your environment variables.",
-                             bot_username=None,
-                             admin_username=ADMIN_USERNAME)
+                             bot_username=None)
     return render_template('index.html',
                          user=session.get('user'),
                          bot_username=BOT_USERNAME,
-                         admin_username=ADMIN_USERNAME,
                          error=request.args.get('error'))
 
 @app.route('/login/telegram', methods=['POST'])
@@ -249,77 +234,78 @@ def telegram_login():
     app.logger.debug("Request args: %s", request.args)
     app.logger.debug("Request values: %s", request.values)
 
-    bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
-    if not bot_token or bot_token.strip() == '':
-        app.logger.error("Telegram login failed: Bot token not configured")
-        return redirect(url_for('index', error="Telegram bot not properly configured"))
-
-    # Log raw form data for debugging
-    app.logger.info("Raw form data:")
-    app.logger.info(json.dumps(dict(request.form), indent=2))
-
-    # Get data from form with proper field mapping
-    data = {
-        'id': request.form.get('id'),
-        'first_name': request.form.get('first_name'),
-        'last_name': request.form.get('last_name'),
-        'username': request.form.get('username'),
-        'photo_url': request.form.get('photo_url'),
-        'auth_date': request.form.get('auth_date'),
-        'hash': request.form.get('hash')
-    }
-
-    # Remove None values (but keep empty strings)
-    data = {k: v for k, v in data.items() if v is not None}
-
-    app.logger.info("Processed login data:")
-    app.logger.info(json.dumps(data, indent=2))
-
-    # Verify the authentication data
-    verification_result = verify_telegram_data(data)
-    app.logger.info(f"Verification result: {verification_result}")
-
-    if not verification_result:
-        app.logger.error("Telegram login failed: Invalid authentication data")
-        app.logger.error(f"Auth data: {json.dumps(data, indent=2)}")
-        return redirect(url_for('index', error="Invalid authentication data"))
-
-    # Store user data in session
-    session['user'] = {
-        'id': data['id'],
-        'first_name': data['first_name'],
-        'last_name': data.get('last_name', ''),
-        'username': data.get('username', ''),
-        'photo_url': data.get('photo_url', '')
-    }
-
-    # Set session expiry to 24 hours if remember_me is checked
-    if request.form.get('remember_me'):
-        session.permanent = True
-        app.permanent_session_lifetime = timedelta(days=1)
-    else:
-        session.permanent = False
-
-    # Log the login
+    # Get user data from request
     try:
-        log_entry = UserLog(
-            telegram_id=data['id'],
-            first_name=data['first_name'],
-            username=data.get('username'),
+        data = {}
+        for key in ['id', 'first_name', 'last_name', 'username', 'photo_url', 'auth_date', 'hash']:
+            data[key] = request.args.get(key) or request.form.get(key)
+
+        app.logger.info("Parsed user data: %s", data)
+
+        # Verify the authentication
+        if not verify_telegram_data(data):
+            app.logger.error("Data verification failed")
+            return redirect(url_for('index', error="Authentication failed"))
+
+        # Convert id and auth_date to integers
+        data['id'] = int(data['id'])
+        data['auth_date'] = int(data['auth_date'])
+
+        # Check if user exists
+        user = TelegramUser.query.filter_by(telegram_id=data['id']).first()
+
+        if user:
+            # Update existing user
+            user.username = data.get('username')
+            user.first_name = data['first_name']
+            user.last_name = data.get('last_name')
+            user.photo_url = data.get('photo_url')
+            user.auth_date = data['auth_date']
+            user.hash = data['hash']
+            user.last_seen = datetime.utcnow()
+        else:
+            # Create new user
+            user = TelegramUser(
+                telegram_id=data['id'],
+                username=data.get('username'),
+                first_name=data['first_name'],
+                last_name=data.get('last_name'),
+                photo_url=data.get('photo_url'),
+                auth_date=data['auth_date'],
+                hash=data['hash']
+            )
+            db.session.add(user)
+
+        # Save changes
+        db.session.commit()
+
+        # Store user info in session
+        session['user'] = {
+            'id': user.telegram_id,
+            'username': user.username,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'photo_url': user.photo_url
+        }
+
+        # Log the login
+        log = UserLog(
+            telegram_id=user.telegram_id,
+            first_name=user.first_name,
+            username=user.username,
             action='login'
         )
-        db.session.add(log_entry)
+        db.session.add(log)
         db.session.commit()
-    except Exception as e:
-        app.logger.error(f"Failed to log login: {str(e)}")
 
-    # Send notifications
-    try:
-        send_login_notifications(data)
-    except Exception as e:
-        app.logger.error(f"Failed to send login notifications: {str(e)}")
+        # Send notifications
+        send_login_notifications(session['user'])
 
-    return redirect(url_for('index'))
+        return redirect(url_for('index'))
+
+    except Exception as e:
+        app.logger.error("Error in login: %s", str(e), exc_info=True)
+        return redirect(url_for('index', error="Login failed. Please try again."))
 
 @app.route('/logout')
 def logout():
@@ -342,41 +328,194 @@ def logout():
     session.pop('user', None)
     return redirect(url_for('index'))
 
-def is_admin():
-    """Check if the current user is an admin"""
-    user = session.get('user')
-    return user and user.get('username') == ADMIN_USERNAME
+@app.route('/manage_groups', methods=['GET', 'POST'])
+def manage_groups():
+    if not session.get('user'):
+        return redirect(url_for('index', error='Please login first'))
 
-@app.route('/admin')
-def admin_panel():
+    if request.method == 'POST':
+        action = request.form.get('action')
+        group_id = request.form.get('group_id')
+        
+        if action == 'create':
+            group_name = request.form.get('group_name')
+            if group_name:
+                group = Group(name=group_name)
+                db.session.add(group)
+                db.session.commit()
+                flash('Group created successfully!', 'success')
+        
+        elif action == 'add_member':
+            group = Group.query.get(group_id)
+            member_name = request.form.get('member_name')
+            if group and member_name:
+                group.add_member(member_name)
+                db.session.commit()
+                flash(f'Member {member_name} added to group!', 'success')
+        
+        elif action == 'remove_member':
+            group = Group.query.get(group_id)
+            member_name = request.form.get('member_name')
+            if group and member_name:
+                group.remove_member(member_name)
+                db.session.commit()
+                flash(f'Member {member_name} removed from group!', 'success')
+        
+        elif action == 'delete':
+            group = Group.query.get(group_id)
+            if group:
+                db.session.delete(group)
+                db.session.commit()
+                flash('Group deleted successfully!', 'success')
+
+    groups = Group.query.all()
+    return render_template('manage_groups.html', groups=groups)
+
+@app.route('/api/users/<int:user_id>/toggle-permissions', methods=['POST'])
+def toggle_user_permissions(user_id):
+    if not session.get('user'):
+        return jsonify({'success': False, 'message': 'Not logged in'}), 401
+
+    user = TelegramUser.query.filter_by(telegram_id=user_id).first()
+    if not user:
+        return jsonify({'success': False, 'message': 'User not found'}), 404
+
+    # Only allow users to toggle their own permissions
+    if user.telegram_id != session['user']['id']:
+        return jsonify({'success': False, 'message': 'Not authorized'}), 403
+
+    user.can_send_messages = not user.can_send_messages
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': f'Message permissions {"enabled" if user.can_send_messages else "disabled"}'
+    })
+
+@app.route('/api/groups', methods=['POST'])
+def create_group():
+    if not session.get('user'):
+        return jsonify({'success': False, 'message': 'Not logged in'}), 401
+
+    data = request.get_json()
+    name = data.get('name')
+    members = data.get('members', [])
+
+    if not name:
+        return jsonify({'success': False, 'message': 'Group name is required'}), 400
+
+    # Create new group
+    group = Group(name=name)
+    
+    # Add members to group
+    for member in members:
+        group.add_member(member)
+
+    db.session.add(group)
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': 'Group created successfully',
+        'group': {
+            'id': group.id,
+            'name': group.name,
+            'members': group.get_members()
+        }
+    })
+
+@app.route('/api/groups/<int:group_id>', methods=['DELETE'])
+def delete_group(group_id):
+    if not session.get('user'):
+        return jsonify({'success': False, 'message': 'Not logged in'}), 401
+
+    group = Group.query.get(group_id)
+    if not group:
+        return jsonify({'success': False, 'message': 'Group not found'}), 404
+
+    # Only allow group creator to delete the group
+    if group.created_by != session['user']['id']:
+        return jsonify({'success': False, 'message': 'Not authorized'}), 403
+
+    db.session.delete(group)
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': 'Group deleted successfully'
+    })
+
+@app.route('/api/send-message', methods=['POST'])
+def send_message():
+    if not session.get('user'):
+        return jsonify({'success': False, 'message': 'Not logged in'}), 401
+
+    data = request.get_json()
+    message = data.get('message')
+    user_ids = data.get('users', [])
+    group_ids = data.get('groups', [])
+
+    if not message:
+        return jsonify({'success': False, 'message': 'Message is required'}), 400
+
+    if not user_ids and not group_ids:
+        return jsonify({'success': False, 'message': 'Select at least one recipient'}), 400
+
+    sender = TelegramUser.query.filter_by(telegram_id=session['user']['id']).first()
+    if not sender:
+        return jsonify({'success': False, 'message': 'Sender not found'}), 404
+
+    # Get all members from selected groups
+    group_members = set()
+    if group_ids:
+        groups = Group.query.filter(Group.id.in_(group_ids)).all()
+        for group in groups:
+            group_members.update(group.get_members())
+
+    # Send message to all recipients
+    success_count = 0
+    failed_recipients = []
+
+    # Send to individual users
+    for user_id in user_ids:
+        try:
+            send_telegram_message(user_id, message)
+            success_count += 1
+        except Exception as e:
+            failed_recipients.append(str(user_id))
+
+    # Send to group members (implement your logic to send to group members)
+    for member_name in group_members:
+        try:
+            # Here you would need to implement how to send messages to members
+            # since they are now stored as strings, not user IDs
+            # This might require additional user input or mapping
+            pass
+        except Exception as e:
+            failed_recipients.append(member_name)
+
+    response_message = f"Message sent to {success_count} recipient(s)"
+    if failed_recipients:
+        response_message += f"\nFailed to send to: {', '.join(failed_recipients)}"
+
+    return jsonify({
+        'success': True,
+        'message': response_message
+    })
+
+@app.route('/logs')
+def view_logs():
+    """View all user login history (admin only)"""
+    if not session.get('user'):
+        return redirect(url_for('index', error='Please login first'))
+
     if not is_admin():
-        return redirect(url_for('index'))
+        return redirect(url_for('index', error='Access denied'))
 
-    # Get all logs, ordered by timestamp (newest first)
+    # Get all logs
     logs = UserLog.query.order_by(UserLog.timestamp.desc()).all()
-    return render_template('admin.html', logs=logs)
 
-@app.route('/api/logs')
-def get_logs():
-    if not is_admin():
-        return jsonify({'error': 'Unauthorized'}), 401
-
-    # Get all logs, ordered by timestamp (newest first)
-    logs = UserLog.query.order_by(UserLog.timestamp.desc()).all()
-    return jsonify([log.to_dict() for log in logs])
-
-@app.route('/api/clean-logs', methods=['POST'])
-def clean_logs():
-    if not is_admin():
-        abort(403)
-
-    try:
-        UserLog.query.delete()
-        db.session.commit()
-        return jsonify({'status': 'success', 'message': 'All logs have been cleared'})
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    return render_template('logs.html', logs=logs)
 
 @app.errorhandler(404)
 def page_not_found(e):
