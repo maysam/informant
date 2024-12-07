@@ -42,6 +42,7 @@ class Group(db.Model):
     name = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     members = db.Column(db.Text, default='')  # Store members as comma-separated text
+    owner_id = db.Column(db.Integer, nullable=False)  # Store the telegram_id of the owner
 
     def get_members(self):
         """Get list of members from the stored string"""

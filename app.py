@@ -228,28 +228,32 @@ def index():
 
 @app.route('/login/telegram', methods=['POST'])
 def telegram_login():
-    """Handle Telegram login"""
-    app.logger.debug("Raw request data: %s", request.get_data(as_text=True))
-    app.logger.debug("Request form: %s", request.form)
-    app.logger.debug("Request args: %s", request.args)
-    app.logger.debug("Request values: %s", request.values)
-
-    # Get user data from request
+    """Handle Telegram login callback"""
     try:
+        # Parse user data from form
         data = {}
         for key in ['id', 'first_name', 'last_name', 'username', 'photo_url', 'auth_date', 'hash']:
-            data[key] = request.args.get(key) or request.form.get(key)
+            data[key] = request.form.get(key)
 
         app.logger.info("Parsed user data: %s", data)
+
+        # Basic validation
+        if not all(key in data for key in ['id', 'first_name', 'auth_date', 'hash']):
+            app.logger.error("Missing required fields")
+            return redirect(url_for('index', error='Authentication failed'))
 
         # Verify the authentication
         if not verify_telegram_data(data):
             app.logger.error("Data verification failed")
-            return redirect(url_for('index', error="Authentication failed"))
+            return redirect(url_for('index', error='Authentication failed'))
 
         # Convert id and auth_date to integers
-        data['id'] = int(data['id'])
-        data['auth_date'] = int(data['auth_date'])
+        try:
+            data['id'] = int(data['id'])
+            data['auth_date'] = int(data['auth_date'])
+        except (ValueError, TypeError):
+            app.logger.error("Invalid ID or auth_date format")
+            return redirect(url_for('index', error='Authentication failed'))
 
         # Check if user exists
         user = TelegramUser.query.filter_by(telegram_id=data['id']).first()
@@ -260,8 +264,7 @@ def telegram_login():
             user.first_name = data['first_name']
             user.last_name = data.get('last_name')
             user.photo_url = data.get('photo_url')
-            user.auth_date = data['auth_date']
-            user.hash = data['hash']
+            user.auth_date = data['auth_date']  # Update auth_date
             user.last_seen = datetime.utcnow()
         else:
             # Create new user
@@ -271,7 +274,7 @@ def telegram_login():
                 first_name=data['first_name'],
                 last_name=data.get('last_name'),
                 photo_url=data.get('photo_url'),
-                auth_date=data['auth_date'],
+                auth_date=data['auth_date'],  # Set auth_date
                 hash=data['hash']
             )
             db.session.add(user)
@@ -282,11 +285,16 @@ def telegram_login():
         # Store user info in session
         session['user'] = {
             'id': user.telegram_id,
-            'username': user.username,
             'first_name': user.first_name,
-            'last_name': user.last_name,
+            'username': user.username,
             'photo_url': user.photo_url
         }
+
+        # Handle remember me
+        if request.form.get('remember_me') == 'on':
+            session.permanent = True
+            # Set session lifetime to 30 days
+            app.permanent_session_lifetime = timedelta(days=30)
 
         # Log the login
         log = UserLog(
@@ -305,7 +313,7 @@ def telegram_login():
 
     except Exception as e:
         app.logger.error("Error in login: %s", str(e), exc_info=True)
-        return redirect(url_for('index', error="Login failed. Please try again."))
+        return redirect(url_for('index', error='Authentication failed'))
 
 @app.route('/logout')
 def logout():
@@ -340,35 +348,47 @@ def manage_groups():
         if action == 'create':
             group_name = request.form.get('group_name')
             if group_name:
-                group = Group(name=group_name)
+                group = Group(
+                    name=group_name,
+                    owner_id=session['user']['id']
+                )
                 db.session.add(group)
                 db.session.commit()
                 flash('Group created successfully!', 'success')
         
         elif action == 'add_member':
             group = Group.query.get(group_id)
-            member_name = request.form.get('member_name')
-            if group and member_name:
-                group.add_member(member_name)
-                db.session.commit()
-                flash(f'Member {member_name} added to group!', 'success')
+            if group and group.owner_id == session['user']['id']:
+                member_name = request.form.get('member_name')
+                if member_name:
+                    group.add_member(member_name)
+                    db.session.commit()
+                    flash(f'Member {member_name} added to group!', 'success')
+            else:
+                flash('Access denied!', 'error')
         
         elif action == 'remove_member':
             group = Group.query.get(group_id)
-            member_name = request.form.get('member_name')
-            if group and member_name:
-                group.remove_member(member_name)
-                db.session.commit()
-                flash(f'Member {member_name} removed from group!', 'success')
+            if group and group.owner_id == session['user']['id']:
+                member_name = request.form.get('member_name')
+                if member_name:
+                    group.remove_member(member_name)
+                    db.session.commit()
+                    flash(f'Member {member_name} removed from group!', 'success')
+            else:
+                flash('Access denied!', 'error')
         
         elif action == 'delete':
             group = Group.query.get(group_id)
-            if group:
+            if group and group.owner_id == session['user']['id']:
                 db.session.delete(group)
                 db.session.commit()
                 flash('Group deleted successfully!', 'success')
+            else:
+                flash('Access denied!', 'error')
 
-    groups = Group.query.all()
+    # Only show groups owned by the current user
+    groups = Group.query.filter_by(owner_id=session['user']['id']).all()
     return render_template('manage_groups.html', groups=groups)
 
 @app.route('/api/users/<int:user_id>/toggle-permissions', methods=['POST'])
@@ -405,7 +425,10 @@ def create_group():
         return jsonify({'success': False, 'message': 'Group name is required'}), 400
 
     # Create new group
-    group = Group(name=name)
+    group = Group(
+        name=name,
+        owner_id=session['user']['id']
+    )
     
     # Add members to group
     for member in members:
@@ -434,7 +457,7 @@ def delete_group(group_id):
         return jsonify({'success': False, 'message': 'Group not found'}), 404
 
     # Only allow group creator to delete the group
-    if group.created_by != session['user']['id']:
+    if group.owner_id != session['user']['id']:
         return jsonify({'success': False, 'message': 'Not authorized'}), 403
 
     db.session.delete(group)
@@ -465,10 +488,13 @@ def send_message():
     if not sender:
         return jsonify({'success': False, 'message': 'Sender not found'}), 404
 
-    # Get all members from selected groups
+    # Get all members from selected groups (only from groups owned by the current user)
     group_members = set()
     if group_ids:
-        groups = Group.query.filter(Group.id.in_(group_ids)).all()
+        groups = Group.query.filter(
+            Group.id.in_(group_ids),
+            Group.owner_id == session['user']['id']
+        ).all()
         for group in groups:
             group_members.update(group.get_members())
 

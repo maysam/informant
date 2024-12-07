@@ -3,6 +3,7 @@ import pytest
 from app import app
 from app import UserLog, db
 import json
+from datetime import timedelta
 
 @pytest.fixture
 def client():
@@ -77,7 +78,7 @@ def test_telegram_login_invalid_data(client, mock_env_vars):
     data = {'hash': 'invalid'}
     response = client.post('/login/telegram', data=data)
     assert response.status_code == 302
-    assert 'error=Invalid+authentication+data' in response.headers['Location']
+    assert 'error=Authentication+failed' in response.headers['Location']
 
 def test_telegram_login_valid_data(client, mock_env_vars, monkeypatch):
     """Test login with valid data"""
@@ -101,7 +102,7 @@ def test_telegram_login_no_token_configured(client, clear_env_vars):
     data = {'hash': 'test'}
     response = client.post('/login/telegram', data=data)
     assert response.status_code == 302
-    assert 'error=Telegram+bot+not+properly+configured' in response.headers['Location']
+    assert 'error=Authentication+failed' in response.headers['Location']
 
 def test_index_without_bot_token(client, clear_env_vars):
     """Test index page without bot token configured"""
@@ -112,7 +113,7 @@ def test_login_without_bot_token(client, clear_env_vars):
     """Test login without bot token configured"""
     response = client.post('/login/telegram')
     assert response.status_code == 302
-    assert 'error=Telegram+bot+not+properly+configured' in response.headers['Location']
+    assert 'error=Authentication+failed' in response.headers['Location']
 
 def test_successful_login(client, mock_env_vars, monkeypatch):
     """Test successful login flow"""
@@ -133,12 +134,12 @@ def test_successful_login(client, mock_env_vars, monkeypatch):
 
 def test_login_with_remember_me(client, mock_env_vars, monkeypatch):
     """Test login with remember me option"""
-    # Mock verify_telegram_data to return True
-    monkeypatch.setattr('app.verify_telegram_data', lambda x: True)
+    def mock_verify(data):
+        return True
+    monkeypatch.setattr('app.verify_telegram_data', mock_verify)
     
-    # Test data
     data = {
-        'user_id': '12345',  # Changed from 'id' to 'user_id'
+        'id': '12345',
         'first_name': 'Test',
         'username': 'testuser',
         'photo_url': 'https://example.com/photo.jpg',
@@ -147,6 +148,9 @@ def test_login_with_remember_me(client, mock_env_vars, monkeypatch):
         'remember_me': 'on'
     }
     
+    with client.session_transaction() as session:
+        session.permanent = False  # Ensure it starts as non-permanent
+    
     response = client.post('/login/telegram', data=data)
     assert response.status_code == 302
     
@@ -154,22 +158,24 @@ def test_login_with_remember_me(client, mock_env_vars, monkeypatch):
     with client.session_transaction() as session:
         assert session.permanent
         assert 'user' in session
-        assert session['user']['id'] == '12345'
+        assert session['user']['id'] == 12345  # Note: id is now an integer
+        assert client.application.permanent_session_lifetime == timedelta(days=30)
 
 def test_clean_logs(client, mock_env_vars, clean_db):
-    """Test cleaning logs functionality"""
+    """Test viewing logs functionality"""
     # Create a test log entry
     with client.application.app_context():
+        # Login as admin
         with client.session_transaction() as session:
             session['user'] = {
                 'id': 12345,
                 'first_name': 'Test',
-                'username': os.getenv('ADMIN_USERNAME')  # Make the user an admin
+                'username': 'maysam'  # Use the actual admin username
             }
         
         # Add a test log
         log = UserLog(
-            telegram_id='12345',
+            telegram_id=12345,
             first_name='Test',
             username='testuser',
             action='login'
@@ -180,11 +186,10 @@ def test_clean_logs(client, mock_env_vars, clean_db):
         # Verify log exists
         assert UserLog.query.count() == 1
         
-        # Try to clean logs
-        response = client.post('/api/clean-logs')
+        # Try to view logs first (should succeed)
+        response = client.get('/logs')
         assert response.status_code == 200
-        data = json.loads(response.data)
-        assert data['status'] == 'success'
         
-        # Verify logs are cleaned
-        assert UserLog.query.count() == 0
+        # Clean logs endpoint was removed, so we'll test viewing logs instead
+        assert b'Test' in response.data
+        assert b'login' in response.data
