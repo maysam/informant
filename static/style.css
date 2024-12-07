@@ -34,12 +34,12 @@
 }
 
 .error-message {
-    background: #fff3cd;
-    color: #856404;
-    padding: 15px;
-    border: 1px solid #ffeeba;
+    background-color: #ffebee;
+    color: #c62828;
+    padding: 12px;
     border-radius: 4px;
-    margin: 20px 0;
+    margin-bottom: 20px;
+    border: 1px solid #ffcdd2;
 }
 
 .admin-button {
@@ -55,4 +55,56 @@
 
 .admin-button:hover {
     background-color: #45a049;
+}
+
+.remember-me {
+    margin: 15px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.remember-me input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.remember-me label {
+    cursor: pointer;
+    color: #666;
+    font-size: 14px;
+}
+
+/* 404 Error Page Styles */
+.error-container {
+    text-align: center;
+    padding: 40px 20px;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.error-container h1 {
+    font-size: 3em;
+    color: #e74c3c;
+    margin-bottom: 20px;
+}
+
+.error-message {
+    margin: 30px 0;
+    font-size: 1.2em;
+    color: #555;
+}
+
+.error-actions {
+    margin-top: 30px;
+}
+
+.error-actions .btn {
+    padding: 10px 20px;
+    font-size: 1.1em;
+}
+
+.error-actions i {
+    margin-right: 8px;
 }

@@ -63,7 +63,7 @@ coverage.xml
 cover/
 
 # Logs
-*.log
+logs
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
@@ -76,3 +76,4 @@ db.sqlite3-journal
 .env.development.local
 .env.test.local
 .env.production.local
+/user_logs.db

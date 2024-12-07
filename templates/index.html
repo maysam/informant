@@ -1,70 +1,81 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Telegram Login Demo</title>
-    <link rel="stylesheet" href="/static/style.css">
-    <script async src="https://telegram.org/js/telegram-widget.js?22"></script>
-</head>
-<body>
-    <div class="container">
-        <h1>Welcome to Telegram Login Demo</h1>
-        
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 text-center">
         {% if error %}
-        <div class="error-message" style="color: red; margin: 20px 0;">
-            {{ error }}
-        </div>
+            <div class="alert alert-danger">{{ error }}</div>
+        {% endif %}
+
+        {% if user %}
+            <div class="welcome-container">
+                <img src="{{ user.photo_url }}" alt="Profile Photo" class="profile-photo" onerror="this.src='{{ url_for('static', filename='default-avatar.png') }}'">
+                <h2>Welcome, {{ user.first_name }}!</h2>
+                {% if user.username %}
+                    <p class="username">@{{ user.username }}</p>
+                {% endif %}
+                <a href="{{ url_for('logout') }}" class="btn btn-danger mt-3">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
         {% else %}
-            {% if user %}
-                <div class="user-info">
-                    <h2>Welcome, {{ user.first_name }}!</h2>
-                    {% if user.username %}
-                        <p>Username: @{{ user.username }}</p>
-                    {% endif %}
-                    {% if user.photo_url %}
-                        <img src="{{ user.photo_url }}" alt="Profile Photo">
-                    {% endif %}
-                    {% if user.username == admin_username %}
-                        <a href="{{ url_for('admin_panel') }}" class="admin-button">Admin Panel</a>
-                    {% endif %}
-                    <a href="{{ url_for('logout') }}" class="logout-button">Logout</a>
+            <h2>Welcome to Telegram Login</h2>
+            <p>Please log in using your Telegram account:</p>
+            
+            <form action="{{ url_for('telegram_login') }}" method="post" id="login-form">
+                <script 
+                    async 
+                    src="https://telegram.org/js/telegram-widget.js?22" 
+                    data-telegram-login="{{ bot_username }}" 
+                    data-size="large" 
+                    data-radius="8"
+                    data-onauth="onTelegramAuth(user)"
+                    data-request-access="write">
+                </script>
+                
+                <input type="hidden" name="id" id="id">
+                <input type="hidden" name="first_name" id="first_name">
+                <input type="hidden" name="last_name" id="last_name">
+                <input type="hidden" name="username" id="username">
+                <input type="hidden" name="photo_url" id="photo_url">
+                <input type="hidden" name="auth_date" id="auth_date">
+                <input type="hidden" name="hash" id="hash">
+                
+                <div class="form-check mt-3">
+                    <input type="checkbox" class="form-check-input" id="remember_me" name="remember_me">
+                    <label class="form-check-label" for="remember_me">Remember me for 24 hours</label>
                 </div>
-            {% else %}
-                <div class="login-container">
-                    <p>Please login with your Telegram account:</p>
-                    {% if bot_username %}
-                        <script async 
-                            src="https://telegram.org/js/telegram-widget.js?22"
-                            data-telegram-login="{{ bot_username }}"
-                            data-size="large"
-                            data-radius="8"
-                            data-onauth="onTelegramAuth(user)"
-                            data-request-access="write">
-                        </script>
-                    {% endif %}
-                </div>
-            {% endif %}
+            </form>
         {% endif %}
     </div>
+</div>
+{% endblock %}
 
-    <script>
-        function onTelegramAuth(user) {
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = '/login/telegram';
-
-            for (const [key, value] of Object.entries(user)) {
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = key;
-                input.value = value;
-                form.appendChild(input);
-            }
-
-            document.body.appendChild(form);
-            form.submit();
+{% block extra_js %}
+<script>
+function onTelegramAuth(user) {
+    console.log('Telegram auth data:', user);  // Debug log
+    
+    // Map all possible user fields
+    const fields = {
+        'id': 'id',
+        'first_name': 'first_name',
+        'last_name': 'last_name',
+        'username': 'username',
+        'photo_url': 'photo_url',
+        'auth_date': 'auth_date',
+        'hash': 'hash'
+    };
+    
+    // Set form values, with fallbacks for optional fields
+    for (const [formId, userField] of Object.entries(fields)) {
+        const element = document.getElementById(formId);
+        if (element) {
+            element.value = user[userField] || '';
         }
-    </script>
-</body>
-</html>
+    }
+    
+    document.getElementById('login-form').submit();
+}
+</script>
+{% endblock %}
